@@ -2565,7 +2565,7 @@ typedef void (*WGPUProcTextureViewRelease)(WGPUTextureView textureView) ;
  void wgpuInstanceGetWGSLLanguageFeatures(WGPUInstance instance, WGPUSupportedWGSLLanguageFeatures * features) ;
  WGPUBool wgpuInstanceHasWGSLLanguageFeature(WGPUInstance instance, WGPUWGSLLanguageFeatureName feature) ;
  void wgpuInstanceProcessEvents(WGPUInstance instance) ;
- WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const * options, WGPURequestAdapterCallbackInfo callbackInfo) ;
+// WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const * options, WGPURequestAdapterCallbackInfo callbackInfo) ;
  WGPUWaitStatus wgpuInstanceWaitAny(WGPUInstance instance, size_t futureCount, WGPUFutureWaitInfo * futures, uint64_t timeoutNS) ;
  void wgpuInstanceAddRef(WGPUInstance instance) ;
  void wgpuInstanceRelease(WGPUInstance instance) ;

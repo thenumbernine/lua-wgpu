@@ -1,6 +1,28 @@
+--------------------------------------------
+-- generated with dist/build-distinfo.rua --
+--------------------------------------------
+
+name = "wgpu"
 files = {
+	"README.md",
+	"a_to_so/Makefile",
+	"distinfo",
+	"ffi/webgpu.lua",
+	"include/webgpu/webgpu.h",
+	"include/webgpu/webgpu_cpp.h",
+	"include/webgpu/webgpu_cpp_print.h",
+	"run.lua",
+	"wgpu.lua",
 }
+if ffi.os == "Linux" and ffi.arch == "x64" then
+	table.append(files, {
+		"bin/Linux/x64/libwebgpu_dawn.so",
+	})
+end
 deps = {
+	"ext",
+	"ffi",
+	"sdl",
 }
 generateBindings = function()
 	return {
