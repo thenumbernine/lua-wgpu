@@ -1,0 +1,13 @@
+files = {
+}
+deps = {
+}
+generateBindings = function()
+	return {
+		{
+			includeDirs = '-Iinclude',
+			inc = '"webgpu/webgpu.h"',
+			out = 'webgpu.lua',
+		},
+	}
+end
