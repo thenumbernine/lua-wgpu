@@ -23,6 +23,8 @@ deps = {
 	"ext",
 	"ffi",
 	"sdl",
+	"stl",
+	"vec-ffi",
 }
 generateBindings = function()
 	return {

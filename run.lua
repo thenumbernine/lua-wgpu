@@ -710,7 +710,6 @@ print'exit begin'
 	wgpu.wgpuDeviceRelease(self.device)
 	wgpu.wgpuAdapterRelease(self.adapter)
 	wgpu.wgpuInstanceRelease(self.instance)
-os.exit()
 print'exit end'
 	WebGPUApp.super.exit(self)
 end
