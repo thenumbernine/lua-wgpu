@@ -42,7 +42,10 @@ end
 
 -- override for post-webgpu-init stuff 
 function WebGPUApp:initWebGPU()
-	-- init here
+	-- weebgpu init here
+	
+	-- create instance
+
 	assert.eq(0, ffi.offsetof(WGPUDawnTogglesDescriptor, 'chain'))
 	self.instance = wgpu.wgpuCreateInstance(WGPUInstanceDescriptor{
 		nextInChain = ffi.cast(WGPUChainedStruct_ptr, WGPUDawnTogglesDescriptor{
@@ -57,6 +60,8 @@ function WebGPUApp:initWebGPU()
 	})
 print('instance', self.instance)
 	assert.ne(self.instance, nil, 'wgpuCreateInstance')
+
+	-- create surface
 
 	do
 print('SDL window', self.window)
@@ -81,15 +86,17 @@ print('X11 window', window)
 print('surface', self.surface)
 	end
 
+	-- create adapter
+
 	do
 		local function callback(
-		--[=[
+		-- [=[
 			status,		-- WGPURequestAdapterStatus 
 			adapter,	-- WGPUAdapter 
-			--[[
+			-- [[
 			message,	-- WGPUStringView ... though I converted it to a *
 			--]]
-			-- [[
+			--[[
 			message_data,	-- char const * 
 			message_length,	-- size_t 
 			--]]
@@ -97,8 +104,6 @@ print('surface', self.surface)
 			userdata2	-- void *
 		--]=]
 		)
-print('callback')			
-do return end			
 			local properties = WGPUAdapterInfo()
 			wgpu.wgpuAdapterGetInfo(adapter, properties)
 			print"Adapter properties:"
@@ -116,15 +121,16 @@ do return end
 			if properties.description.length > 0 then
 				print(" - description: " .. properties.description)
 			end
-			print(" - backendType: 0x" .. ('%x'):format(properties.backendType))
-			print(" - adapterType: 0x" .. ('%x'):format(properties.adapterType))
+			print(" - backendType: 0x" .. ('%x'):format(tonumber(properties.backendType)))
+			print(" - adapterType: 0x" .. ('%x'):format(tonumber(properties.adapterType)))
 
 			local features = WGPUSupportedFeatures()
 			wgpu.wgpuAdapterGetFeatures(adapter, features)
-			print("Adapter features:")
-			for i=0,features.featureCount-1 do
-				print((" - 0x%08x"):format(features.features[i]))
+			io.write("Adapter features:")
+			for i=0,tonumber(features.featureCount)-1 do
+				io.write((" 0x%08x"):format(tonumber(features.features[i])))
 			end
+			print()
 
 			local limits = WGPULimits()
 			if wgpu.WGPUStatus_Success == wgpu.wgpuAdapterGetLimits(adapter, limits) then
@@ -163,28 +169,23 @@ do return end
 					'maxComputeWorkgroupsPerDimension',
 					'maxImmediateSize',
 				} do
-					print(' '..field..' = '..limits[k])
+					print(' '..field..' = '..tostring(limits[field]))
 				end
 			end
 
 			if status == wgpu.WGPURequestAdapterStatus_Success then
 				self.adapter = adapter
-				print'here'
 			else
-				--[[
 				print("Could not get WebGPU adapter: " .. message)
-				--]]
-				-- [[
-				print("Could not get WebGPU adapter:", message_data, message_length)
-				--]]
 			end
 		end
+_G.retainCallback = callback
+		-- [=[
 		--local closure = ffi.cast(WGPURequestAdapterCallback, callback)	-- can't convert
 		--local closure = ffi.cast('void (*)(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2)', callback)	-- can't convert
 		-- luajit cannot handle pass-by-value structs in callbacks 
 		local closure = ffi.cast('void (*)(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView* message, void* userdata1, void* userdata2)', callback)	-- segfault
 		--local closure = ffi.cast('void (*)(WGPURequestAdapterStatus status, WGPUAdapter adapter, char const * message_data, size_t message_length, void* userdata1, void* userdata2)', callback)	-- can't convert
-		--[=[
 ffi.cdef[[
 WGPUFuture wgpuInstanceRequestAdapter(
 	WGPUInstance instance,
@@ -192,30 +193,109 @@ WGPUFuture wgpuInstanceRequestAdapter(
 	WGPURequestAdapterCallbackInfo callbackInfo // webgpu.h has pass-struct-by-value
 );
 ]]	
-		--]=]
-		-- [=[ where in the pass-by-value are e getting segafults?
-ffi.cdef[[		
-WGPUFuture wgpuInstanceRequestAdapter(
-	WGPUInstance instance,
-	WGPURequestAdapterOptions const * options,
-	WGPURequestAdapterCallbackInfo * callbackInfo // me converting to pointer to try to keep luajit from segfaulting
-);
-]]
-		--]=]
 		wgpu.wgpuInstanceRequestAdapter(
-			self.insance,
-			ffi.new('WGPURequestAdapterOptions[1]', {
+			self.instance,
+			WGPURequestAdapterOptions{
 				compatibleSurface = self.surface,
-			}),
+			},
 			WGPURequestAdapterCallbackInfo{
 				mode = wgpu.WGPUCallbackMode_AllowSpontaneous,
 				callback = closure,
-				--callback = callback,
 			}
+		)		
+		--]=]
+		--[=[ where in the pass-by-value are e getting segfaults?
+ffi.cdef[[		
+// me changing message from value to pointer to fix the segfaults of luajit callback limitations
+typedef void (*modified_WGPURequestAdapterCallback)(
+	WGPURequestAdapterStatus status,
+	WGPUAdapter adapter,
+	WGPUStringView * message,
+	void* userdata1,
+	void* userdata2
+);
+
+// same but with callback type swapped
+typedef struct modified_WGPURequestAdapterCallbackInfo {
+    WGPUChainedStruct * nextInChain;
+    WGPUCallbackMode mode;
+    modified_WGPURequestAdapterCallback callback;
+    void* userdata1;
+    void* userdata2;
+} modified_WGPURequestAdapterCallbackInfo ;
+
+// me converting to pointer to try to keep luajit from segfaulting
+WGPUFuture wgpuInstanceRequestAdapter(
+	WGPUInstance instance,
+	WGPURequestAdapterOptions const * options,
+	modified_WGPURequestAdapterCallbackInfo callbackInfo 
+);
+]]
+		local closure = ffi.cast('modified_WGPURequestAdapterCallback', callback)
+		wgpu.wgpuInstanceRequestAdapter(
+			self.instance,
+			WGPURequestAdapterOptions{
+				compatibleSurface = self.surface,
+			},
+			ffi.new('modified_WGPURequestAdapterCallbackInfo', {
+				mode = wgpu.WGPUCallbackMode_AllowSpontaneous,
+				callback = closure,
+			})
 		)	
-		--closure:free()
+		--]=]
+		assert(self.adapter, 'wgpuInstanceRequestAdapter: failed to find adapter')
 print('adapter', self.adapter)
+		closure:free()
 	end
+
+	--[=[ create device
+	do
+		local callback = function	
+		device = requestDeviceSync(adapter, (WGPUDeviceDescriptor[]){{
+			.label = WGPU_STRINGVIEW_LITERAL("My Device"),
+#if 0
+			.requiredLimits = (WGPULimits[]){{
+				//.maxBufferSize = colorCPU.size(),
+				.maxVertexBuffers = 2,
+				.maxVertexAttributes = 2,
+				.maxVertexBufferArrayStride = sizeof(Tensor::float3),
+			}},
+#endif
+			.defaultQueue = {
+				.label = WGPU_STRINGVIEW_LITERAL("The default queue"),
+			},
+			.deviceLostCallbackInfo = {
+				.mode = WGPUCallbackMode_AllowSpontaneous,
+				.callback = [](
+					WGPUDevice const * device,
+					WGPUDeviceLostReason reason,
+					WGPUStringView message,
+					void* userdata1,
+					void* userdata2
+				) {
+					std::cout << "Device lost: reason " << reason;
+					if (message.length) std::cout << " (" << message << ")";
+					std::cout << std::endl;
+				},
+			},
+			.uncapturedErrorCallbackInfo = {
+				.callback = [](
+					WGPUDevice const * device,
+					WGPUErrorType type,
+					WGPUStringView message,
+					void* userdata1,
+					void* userdata2
+				) {
+					std::cout << "Uncaptured device error: type " << type;
+					if (message.length) std::cout << " (" << message << ")";
+					std::cout << std::endl;
+				},
+			},
+		}});
+		std::cout << "Got device: " << device << std::endl;
+
+	end
+	--]=]
 end
 
 function WebGPUApp:update()

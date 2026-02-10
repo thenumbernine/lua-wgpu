@@ -1054,7 +1054,21 @@ typedef void (*WGPUDeviceLostCallback)(WGPUDevice const * device, WGPUDeviceLost
 typedef void (*WGPULoggingCallback)(WGPULoggingType type, WGPUStringView message, void* userdata1, void* userdata2) ;
 typedef void (*WGPUPopErrorScopeCallback)(WGPUPopErrorScopeStatus status, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2) ;
 typedef void (*WGPUQueueWorkDoneCallback)(WGPUQueueWorkDoneStatus status, WGPUStringView message, void* userdata1, void* userdata2) ;
-typedef void (*WGPURequestAdapterCallback)(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2) ;
+
+typedef void (*WGPURequestAdapterCallback)(
+	WGPURequestAdapterStatus status,
+	WGPUAdapter adapter,
+	
+	// NOTICE, in C this is a pass-by-value
+	// but LuaJIT can't handle pass-struct-by-value in callbacks
+	// so it has to be converted to a pointer
+	//WGPUStringView message,
+	WGPUStringView * message,
+	
+	void * userdata1,
+	void * userdata2
+);
+
 typedef void (*WGPURequestDeviceCallback)(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void* userdata2) ;
 typedef void (*WGPUUncapturedErrorCallback)(WGPUDevice const * device, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2) ;
 typedef struct WGPUChainedStruct {
@@ -2565,7 +2579,10 @@ typedef void (*WGPUProcTextureViewRelease)(WGPUTextureView textureView) ;
  void wgpuInstanceGetWGSLLanguageFeatures(WGPUInstance instance, WGPUSupportedWGSLLanguageFeatures * features) ;
  WGPUBool wgpuInstanceHasWGSLLanguageFeature(WGPUInstance instance, WGPUWGSLLanguageFeatureName feature) ;
  void wgpuInstanceProcessEvents(WGPUInstance instance) ;
+
+// pass-by-value with callbacks is causing segfaults so...
 // WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, WGPURequestAdapterOptions const * options, WGPURequestAdapterCallbackInfo callbackInfo) ;
+
  WGPUWaitStatus wgpuInstanceWaitAny(WGPUInstance instance, size_t futureCount, WGPUFutureWaitInfo * futures, uint64_t timeoutNS) ;
  void wgpuInstanceAddRef(WGPUInstance instance) ;
  void wgpuInstanceRelease(WGPUInstance instance) ;
