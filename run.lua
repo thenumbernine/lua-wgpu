@@ -179,20 +179,7 @@ print('surface', self.surface)
 				print("Could not get WebGPU adapter: " .. message)
 			end
 		end
-_G.retainCallback = callback
-		-- [=[
-		--local closure = ffi.cast(WGPURequestAdapterCallback, callback)	-- can't convert
-		--local closure = ffi.cast('void (*)(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2)', callback)	-- can't convert
-		-- luajit cannot handle pass-by-value structs in callbacks 
-		local closure = ffi.cast('void (*)(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView* message, void* userdata1, void* userdata2)', callback)	-- segfault
-		--local closure = ffi.cast('void (*)(WGPURequestAdapterStatus status, WGPUAdapter adapter, char const * message_data, size_t message_length, void* userdata1, void* userdata2)', callback)	-- can't convert
-ffi.cdef[[
-WGPUFuture wgpuInstanceRequestAdapter(
-	WGPUInstance instance,
-	WGPURequestAdapterOptions const * options,
-	WGPURequestAdapterCallbackInfo callbackInfo // webgpu.h has pass-struct-by-value
-);
-]]	
+		local closure = ffi.cast(WGPURequestAdapterCallback, callback)	-- can't convert
 		wgpu.wgpuInstanceRequestAdapter(
 			self.instance,
 			WGPURequestAdapterOptions{
@@ -203,46 +190,7 @@ WGPUFuture wgpuInstanceRequestAdapter(
 				callback = closure,
 			}
 		)		
-		--]=]
-		--[=[ where in the pass-by-value are e getting segfaults?
-ffi.cdef[[		
-// me changing message from value to pointer to fix the segfaults of luajit callback limitations
-typedef void (*modified_WGPURequestAdapterCallback)(
-	WGPURequestAdapterStatus status,
-	WGPUAdapter adapter,
-	WGPUStringView * message,
-	void* userdata1,
-	void* userdata2
-);
 
-// same but with callback type swapped
-typedef struct modified_WGPURequestAdapterCallbackInfo {
-    WGPUChainedStruct * nextInChain;
-    WGPUCallbackMode mode;
-    modified_WGPURequestAdapterCallback callback;
-    void* userdata1;
-    void* userdata2;
-} modified_WGPURequestAdapterCallbackInfo ;
-
-// me converting to pointer to try to keep luajit from segfaulting
-WGPUFuture wgpuInstanceRequestAdapter(
-	WGPUInstance instance,
-	WGPURequestAdapterOptions const * options,
-	modified_WGPURequestAdapterCallbackInfo callbackInfo 
-);
-]]
-		local closure = ffi.cast('modified_WGPURequestAdapterCallback', callback)
-		wgpu.wgpuInstanceRequestAdapter(
-			self.instance,
-			WGPURequestAdapterOptions{
-				compatibleSurface = self.surface,
-			},
-			ffi.new('modified_WGPURequestAdapterCallbackInfo', {
-				mode = wgpu.WGPUCallbackMode_AllowSpontaneous,
-				callback = closure,
-			})
-		)	
-		--]=]
 		assert(self.adapter, 'wgpuInstanceRequestAdapter: failed to find adapter')
 print('adapter', self.adapter)
 		closure:free()
