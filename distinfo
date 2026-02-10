@@ -5,9 +5,15 @@ deps = {
 generateBindings = function()
 	return {
 		{
-			includeDirs = '-Iinclude',
-			inc = '"webgpu/webgpu.h"',
+			inc = '<webgpu/webgpu.h>',
 			out = 'webgpu.lua',
+			final = function(code)
+				-- TODO replace all those 'static const's with 'enum's
+				code = code .. [[
+return require 'ffi.load' 'webgpu_dawn'
+]]
+				return code
+			end,
 		},
 	}
 end
