@@ -1046,31 +1046,24 @@ typedef void (*WGPUCallback)(void * userdata) ;
 typedef size_t (*WGPUDawnLoadCacheDataFunction)(void const * key, size_t keySize, void * value, size_t valueSize, void * userdata) ;
 typedef void (*WGPUDawnStoreCacheDataFunction)(void const * key, size_t keySize, void const * value, size_t valueSize, void * userdata) ;
 typedef void (*WGPUProc)(void) ;
-typedef void (*WGPUBufferMapCallback)(WGPUMapAsyncStatus status, WGPUStringView message, void* userdata1, void* userdata2) ;
+
+// for the sake of LuaJIT, all these `WGPUStringView message` are now `WGPUStringView * message`
+// In C this is a pass-by-value
+// but LuaJIT can't handle pass-struct-by-value in callbacks
+// so it has to be converted to a pointer
+typedef void (*WGPUBufferMapCallback)(WGPUMapAsyncStatus status, WGPUStringView * message, void* userdata1, void* userdata2) ;
 typedef void (*WGPUCompilationInfoCallback)(WGPUCompilationInfoRequestStatus status, struct WGPUCompilationInfo const * compilationInfo, void* userdata1, void* userdata2) ;
-typedef void (*WGPUCreateComputePipelineAsyncCallback)(WGPUCreatePipelineAsyncStatus status, WGPUComputePipeline pipeline, WGPUStringView message, void* userdata1, void* userdata2) ;
-typedef void (*WGPUCreateRenderPipelineAsyncCallback)(WGPUCreatePipelineAsyncStatus status, WGPURenderPipeline pipeline, WGPUStringView message, void* userdata1, void* userdata2) ;
-typedef void (*WGPUDeviceLostCallback)(WGPUDevice const * device, WGPUDeviceLostReason reason, WGPUStringView message, void* userdata1, void* userdata2) ;
-typedef void (*WGPULoggingCallback)(WGPULoggingType type, WGPUStringView message, void* userdata1, void* userdata2) ;
-typedef void (*WGPUPopErrorScopeCallback)(WGPUPopErrorScopeStatus status, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2) ;
-typedef void (*WGPUQueueWorkDoneCallback)(WGPUQueueWorkDoneStatus status, WGPUStringView message, void* userdata1, void* userdata2) ;
+typedef void (*WGPUCreateComputePipelineAsyncCallback)(WGPUCreatePipelineAsyncStatus status, WGPUComputePipeline pipeline, WGPUStringView * message, void* userdata1, void* userdata2) ;
+typedef void (*WGPUCreateRenderPipelineAsyncCallback)(WGPUCreatePipelineAsyncStatus status, WGPURenderPipeline pipeline, WGPUStringView * message, void* userdata1, void* userdata2) ;
+typedef void (*WGPUDeviceLostCallback)(WGPUDevice const * device, WGPUDeviceLostReason reason, WGPUStringView * message, void* userdata1, void* userdata2);
+typedef void (*WGPULoggingCallback)(WGPULoggingType type, WGPUStringView * message, void* userdata1, void* userdata2) ;
+typedef void (*WGPUPopErrorScopeCallback)(WGPUPopErrorScopeStatus status, WGPUErrorType type, WGPUStringView * message, void* userdata1, void* userdata2) ;
+typedef void (*WGPUQueueWorkDoneCallback)(WGPUQueueWorkDoneStatus status, WGPUStringView * message, void* userdata1, void* userdata2) ;
+typedef void (*WGPURequestAdapterCallback)(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView * message, void * userdata1, void * userdata2);
+typedef void (*WGPURequestDeviceCallback)(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView * message, void* userdata1, void* userdata2) ;
+typedef void (*WGPUUncapturedErrorCallback)(WGPUDevice const * device, WGPUErrorType type, WGPUStringView * message, void* userdata1, void* userdata2) ;
+// done converted structs in callbacks 
 
-typedef void (*WGPURequestAdapterCallback)(
-	WGPURequestAdapterStatus status,
-	WGPUAdapter adapter,
-	
-	// NOTICE, in C this is a pass-by-value
-	// but LuaJIT can't handle pass-struct-by-value in callbacks
-	// so it has to be converted to a pointer
-	//WGPUStringView message,
-	WGPUStringView * message,
-	
-	void * userdata1,
-	void * userdata2
-);
-
-typedef void (*WGPURequestDeviceCallback)(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void* userdata2) ;
-typedef void (*WGPUUncapturedErrorCallback)(WGPUDevice const * device, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2) ;
 typedef struct WGPUChainedStruct {
     struct WGPUChainedStruct * next;
     WGPUSType sType;

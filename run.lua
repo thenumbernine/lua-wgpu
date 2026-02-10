@@ -2,6 +2,9 @@
 local ffi = require 'ffi'
 local assert = require 'ext.assert'
 local string = require 'ext.string'
+local vec2f = require 'vec-ffi.vec2f'
+local vec3f = require 'vec-ffi.vec3f'
+local vector = require 'stl.vector-lua'	-- I'd use pure-ffi stl.vector but it's giving me segfaults... something is collecting/leaking...
 local sdl = require 'sdl'
 local SDLApp = require 'sdl.app'
 local wgpu = require 'wgpu'
@@ -21,10 +24,51 @@ local WGPURequestAdapterCallback = ffi.typeof'WGPURequestAdapterCallback'
 local WGPUAdapterInfo = ffi.typeof'WGPUAdapterInfo'
 local WGPUSupportedFeatures = ffi.typeof'WGPUSupportedFeatures'
 local WGPULimits = ffi.typeof'WGPULimits'
+local WGPUDeviceDescriptor = ffi.typeof'WGPUDeviceDescriptor'
+local WGPUDeviceLostCallback = ffi.typeof'WGPUDeviceLostCallback'
+local WGPUUncapturedErrorCallback = ffi.typeof'WGPUUncapturedErrorCallback'
+local WGPURequestDeviceCallbackInfo = ffi.typeof'WGPURequestDeviceCallbackInfo'
+local WGPURequestDeviceCallback = ffi.typeof'WGPURequestDeviceCallback'
+local WGPUQueueWorkDoneCallbackInfo = ffi.typeof'WGPUQueueWorkDoneCallbackInfo'
+local WGPUQueueWorkDoneCallback = ffi.typeof'WGPUQueueWorkDoneCallback'
+local WGPUSurfaceCapabilities = ffi.typeof'WGPUSurfaceCapabilities'
+local WGPUSurfaceConfiguration = ffi.typeof'WGPUSurfaceConfiguration'
+local WGPUShaderSourceWGSL = ffi.typeof'WGPUShaderSourceWGSL'
+local WGPUShaderModuleDescriptor = ffi.typeof'WGPUShaderModuleDescriptor'
+local WGPURenderPipelineDescriptor = ffi.typeof'WGPURenderPipelineDescriptor'
+local WGPUVertexAttribute = ffi.typeof'WGPUVertexAttribute'
+local WGPUVertexBufferLayout = ffi.typeof'WGPUVertexBufferLayout'
+local WGPUVertexBufferLayout_array = ffi.typeof'WGPUVertexBufferLayout[?]'
+local WGPUFragmentState = ffi.typeof'WGPUFragmentState'
+local WGPUColorTargetState = ffi.typeof'WGPUColorTargetState'
+local WGPUBlendState = ffi.typeof'WGPUBlendState'
+local WGPUBufferDescriptor = ffi.typeof'WGPUBufferDescriptor'
+local WGPUSurfaceTexture = ffi.typeof'WGPUSurfaceTexture'
+local WGPUTextureViewDescriptor = ffi.typeof'WGPUTextureViewDescriptor'
+local WGPUCommandEncoderDescriptor = ffi.typeof'WGPUCommandEncoderDescriptor'
+local WGPURenderPassDescriptor = ffi.typeof'WGPURenderPassDescriptor'
+local WGPURenderPassColorAttachment = ffi.typeof'WGPURenderPassColorAttachment'
+local WGPUCommandBufferDescriptor = ffi.typeof'WGPUCommandBufferDescriptor'
 
+local function makeWGPUVertexBufferLayout(t)
+	return WGPUVertexBufferLayout_array(#t, t)
+end
 
 local WGPUStringView = ffi.typeof'WGPUStringView'
 ffi.metatype(WGPUStringView, {
+	__new = function(ctype, ...)
+		local o = ffi.new(ctype)
+		if select('#', ...) == 1
+		and type(select(1, ...)) == 'string'
+		then
+			local s = ...
+			o.data = s
+			o.length = #s
+		else
+			o.data, o.length = ...
+		end
+		return o
+	end,
 	__tostring = function(s)
 		return ffi.string(s.data, s.length)
 	end,
@@ -90,19 +134,11 @@ print('surface', self.surface)
 
 	do
 		local function callback(
-		-- [=[
 			status,		-- WGPURequestAdapterStatus 
 			adapter,	-- WGPUAdapter 
-			-- [[
-			message,	-- WGPUStringView ... though I converted it to a *
-			--]]
-			--[[
-			message_data,	-- char const * 
-			message_length,	-- size_t 
-			--]]
+			message,	-- WGPUStringView *
 			userdata1,	-- void * 
 			userdata2	-- void *
-		--]=]
 		)
 			local properties = WGPUAdapterInfo()
 			wgpu.wgpuAdapterGetInfo(adapter, properties)
@@ -179,6 +215,7 @@ print('surface', self.surface)
 				print("Could not get WebGPU adapter: " .. message)
 			end
 		end
+		self.retainCallback = callback
 		local closure = ffi.cast(WGPURequestAdapterCallback, callback)	-- can't convert
 		wgpu.wgpuInstanceRequestAdapter(
 			self.instance,
@@ -190,74 +227,460 @@ print('surface', self.surface)
 				callback = closure,
 			}
 		)		
-
 		assert(self.adapter, 'wgpuInstanceRequestAdapter: failed to find adapter')
 print('adapter', self.adapter)
+		self.retainCallback = nil
 		closure:free()
 	end
 
-	--[=[ create device
+	-- create device
+	
 	do
-		local callback = function	
-		device = requestDeviceSync(adapter, (WGPUDeviceDescriptor[]){{
-			.label = WGPU_STRINGVIEW_LITERAL("My Device"),
-#if 0
-			.requiredLimits = (WGPULimits[]){{
-				//.maxBufferSize = colorCPU.size(),
-				.maxVertexBuffers = 2,
-				.maxVertexAttributes = 2,
-				.maxVertexBufferArrayStride = sizeof(Tensor::float3),
-			}},
-#endif
-			.defaultQueue = {
-				.label = WGPU_STRINGVIEW_LITERAL("The default queue"),
-			},
-			.deviceLostCallbackInfo = {
-				.mode = WGPUCallbackMode_AllowSpontaneous,
-				.callback = [](
-					WGPUDevice const * device,
-					WGPUDeviceLostReason reason,
-					WGPUStringView message,
-					void* userdata1,
-					void* userdata2
-				) {
-					std::cout << "Device lost: reason " << reason;
-					if (message.length) std::cout << " (" << message << ")";
-					std::cout << std::endl;
-				},
-			},
-			.uncapturedErrorCallbackInfo = {
-				.callback = [](
-					WGPUDevice const * device,
-					WGPUErrorType type,
-					WGPUStringView message,
-					void* userdata1,
-					void* userdata2
-				) {
-					std::cout << "Uncaptured device error: type " << type;
-					if (message.length) std::cout << " (" << message << ")";
-					std::cout << std::endl;
-				},
-			},
-		}});
-		std::cout << "Got device: " << device << std::endl;
+		self.deviceLostCallback = function(
+			device, 	-- WGPUDevice const *
+			reason, 	-- WGPUDeviceLostReason ,
+			message,	-- WGPUStringView *
+			userdata1,	-- void* 
+			userdata2	-- void* 
+		)
+			print("Device lost, reason:"..tostring(reason)
+				..(message.length > 0 and ' message:'..message or '')
+			)
+		end
+		self.deviceLostClosure = ffi.cast(WGPUDeviceLostCallback, self.deviceLostCallback)
+		
+		self.uncapturedErrorCallback = function(
+			device,		-- WGPUDevice const *
+			errorType,	-- WGPUErrorType
+			message,	-- WGPUStringView *
+			userdata1,	-- void* 
+			userdata2	-- void* 
+		)
+			print("Uncaptured device error, type="..tostring(errorType)
+				..(message.length > 0 and ' message:'..message or '')
+			)
+		end
+		self.uncapturedErrorClosure = ffi.cast(WGPUUncapturedErrorCallback, self.uncapturedErrorCallback)
 
+		self.requestDeviceCallback = function(
+			status,		-- WGPURequestDeviceStatus
+			device,		-- WGPUDevice
+			message,	-- WGPUStringView *
+			userdata1,	-- void *
+			userdata2	-- void *
+		)
+			do--inspectDevice(device);
+				local features = WGPUSupportedFeatures()
+				wgpu.wgpuDeviceGetFeatures(device, features)
+				io.write("Device features:")
+				for i=0,tonumber(features.featureCount)-1 do
+					io.write((" 0x%08x"):format(tonumber(features.features[i])))
+				end
+				print()
+
+				local limits = WGPULimits()
+				if wgpu.WGPUStatus_Success == wgpu.wgpuDeviceGetLimits(device, limits) then
+					print"Device limits:"
+					for _,field in ipairs{
+						'maxTextureDimension1D',
+						'maxTextureDimension2D',
+						'maxTextureDimension3D',
+						'maxTextureArrayLayers',
+						'maxBindGroups',
+						'maxBindGroupsPlusVertexBuffers',
+						'maxBindingsPerBindGroup',
+						'maxDynamicUniformBuffersPerPipelineLayout',
+						'maxDynamicStorageBuffersPerPipelineLayout',
+						'maxSampledTexturesPerShaderStage',
+						'maxSamplersPerShaderStage',
+						'maxStorageBuffersPerShaderStage',
+						'maxStorageTexturesPerShaderStage',
+						'maxUniformBuffersPerShaderStage',
+						'maxUniformBufferBindingSize',
+						'maxStorageBufferBindingSize',
+						'minUniformBufferOffsetAlignment',
+						'minStorageBufferOffsetAlignment',
+						'maxVertexBuffers',
+						'maxBufferSize',
+						'maxVertexAttributes',
+						'maxVertexBufferArrayStride',
+						'maxInterStageShaderVariables',
+						'maxColorAttachments',
+						'maxColorAttachmentBytesPerSample',
+						'maxComputeWorkgroupStorageSize',
+						'maxComputeInvocationsPerWorkgroup',
+						'maxComputeWorkgroupSizeX',
+						'maxComputeWorkgroupSizeY',
+						'maxComputeWorkgroupSizeZ',
+						'maxComputeWorkgroupsPerDimension',
+						'maxImmediateSize',
+					} do
+						print(' '..field..' = '..tostring(limits[field]))
+					end
+				end
+			end
+			
+			if status == wgpu.WGPURequestDeviceStatus_Success then
+				self.device = device
+			else
+				print("Could not get WebGPU device: " .. message)
+			end
+		end
+		local requestDeviceClosure = ffi.cast(WGPURequestDeviceCallback, self.requestDeviceCallback)
+
+		wgpu.wgpuAdapterRequestDevice(
+			self.adapter,
+			WGPUDeviceDescriptor{
+				label = WGPUStringView"My Device",
+--[[
+				.requiredLimits = (WGPULimits[]){{
+					//.maxBufferSize = colorCPU.size(),
+					.maxVertexBuffers = 2,
+					.maxVertexAttributes = 2,
+					.maxVertexBufferArrayStride = sizeof(Tensor::float3),
+				}},
+--]]
+				defaultQueue = {
+					label = WGPUStringView"The default queue",
+				},
+				deviceLostCallbackInfo = {
+					mode = wgpu.WGPUCallbackMode_AllowSpontaneous,
+					callback = self.deviceLostClosure,
+				},
+				uncapturedErrorCallbackInfo = {
+					callback = self.uncapturedErrorClosure,
+				},
+			},
+			WGPURequestDeviceCallbackInfo{
+				mode = wgpu.WGPUCallbackMode_AllowSpontaneous,
+				callback = requestDeviceClosure,
+			}
+		)
+print("device", self.device)
+		self.requestDeviceCallback = nil
+		requestDeviceClosure:free()
 	end
-	--]=]
+
+	-- create queue
+
+	self.queueWorkDoneCallback = function(
+		status,		-- WGPUQueueWorkDoneStatus 
+		message,	-- WGPUStringView* 
+		userdata1,	-- void* 
+		userdata2	-- void* 
+	)
+		print("Queued work finished with status: " .. tostring(status)
+				..(message.length > 0 and ' message:'..message or '')
+		)
+	end
+	self.queueWorkDoneClosure = ffi.cast(WGPUQueueWorkDoneCallback, self.queueWorkDoneCallback)
+	self.queue = wgpu.wgpuDeviceGetQueue(self.device)
+	wgpu.wgpuQueueOnSubmittedWorkDone(
+		self.queue,
+		WGPUQueueWorkDoneCallbackInfo{
+			mode = wgpu.WGPUCallbackMode_AllowSpontaneous,
+			callback = self.queueWorkDoneClosure,
+		}
+	)
+
+	do
+		local capabilities = WGPUSurfaceCapabilities()
+		wgpu.wgpuSurfaceGetCapabilities(self.surface, self.adapter, capabilities)
+		self.surfaceFormat = capabilities.formats[0]
+	end
+	self:recreateSwapChain()
+
+	-- create shaders
+
+	local code = [[
+struct VertexOutput {
+	@builtin(position) pos : vec4f,
+	@location(0) color : vec3f
+};
+
+@vertex
+fn vs_main(
+	@builtin(vertex_index) vertexIndex: u32,
+	@location(0) vertex : vec2f,
+	@location(1) color : vec3f
+) -> VertexOutput {
+	var out : VertexOutput;
+	out.pos = vec4f(vertex, 0., 1.);
+	out.color = color;
+	return out;
+}
+
+@fragment
+fn fs_main(
+	in : VertexOutput
+) -> 
+	@location(0) vec4f
+{
+	return vec4f(in.color, 1.);
+}
+]]
+	local vsFunc = "vs_main"
+	local fsFunc = "fs_main"
+	assert.eq(0, ffi.offsetof(WGPUShaderSourceWGSL, 'chain'));
+	local shaderModule = wgpu.wgpuDeviceCreateShaderModule(
+		self.device, 
+		WGPUShaderModuleDescriptor{
+			nextInChain = ffi.cast(WGPUChainedStruct_ptr, WGPUShaderSourceWGSL{
+				chain = {
+					sType = wgpu.WGPUSType_ShaderSourceWGSL,
+				},
+				code = {
+					data = code,
+					length = #code,
+				},
+			}),
+		}
+	)
+
+	self.pipeline = wgpu.wgpuDeviceCreateRenderPipeline(self.device, WGPURenderPipelineDescriptor{
+		vertex = {
+			module = shaderModule,
+			entryPoint = WGPUStringview(vsFunc),
+			bufferCount = 2,
+			buffers = makeWGPUVertexBufferLayout{
+				{	-- vertex
+					stepMode = wgpu.WGPUVertexStepMode_Vertex,
+					arrayStride = ffi.sizeof(vec2f),
+					attributeCount = 1,
+					attributes = WGPUVertexAttribute{
+						format = wgpu.WGPUVertexFormat_Float32x2,
+						shaderLocation = 0,
+					},
+				},
+				{	-- color
+					stepMode = wgpu.WGPUVertexStepMode_Vertex,
+					arrayStride = ffi.sizeof(vec3f),
+					attributeCount = 1,
+					attributes = WGPUVertexAttribute{
+						format = wgpu.WGPUVertexFormat_Float32x3,
+						shaderLocation = 1,
+					},
+				},
+			},
+		},
+		primitive = {
+			topology = wgpu.WGPUPrimitiveTopology_TriangleList,
+			stripIndexFormat = wgpu.WGPUIndexFormat_Undefined,
+			frontFace = wgpu.WGPUFrontFace_CCW,
+			cullMode = wgpu.WGPUCullMode_None,
+		},
+		multisample = {
+			count = 1,
+			mask = ffi.cast('uint32_t', -1),	-- fun fact, this works for uint32 and uint64 but not uint16 or uint8 -- and that's by C specification.
+		},
+		fragment = WGPUFragmentState{
+			module = shaderModule,
+			entryPoint = WGPUStringView(fsFunc),
+			targetCount = 1,
+			targets = WGPUColorTargetState{
+				format = self.surfaceFormat,
+				blend = WGPUBlendState{
+					color = {
+						operation = wgpu.WGPUBlendOperation_Add,
+						srcFactor = wgpu.WGPUBlendFactor_SrcAlpha,
+						dstFactor = wgpu.WGPUBlendFactor_OneMinusSrcAlpha,
+					},
+					alpha = {
+						operation = wgpu.WGPUBlendOperation_Add,
+						srcFactor = wgpu.WGPUBlendFactor_Zero,
+						dstFactor = wgpu.WGPUBlendFactor_One,
+					},
+				},
+				writeMask = wgpu.WGPUColorWriteMask_All,
+			},
+		},
+	})
+
+	self.vertexCPU = vector(vec2f, {
+		{-.5, -.5},
+		{.5, -.5},
+		{0., .5},
+		{-.55, -.5},
+		{-.05, .5},
+		{-.55, .5},
+	})
+	self.vertexCount = #vertexCPU
+
+	-- buffers
+	do
+		local bufferSize = vertexCPU:getNumBytes()
+		self.vertexGPU = wgpu.wgpuDeviceCreateBuffer(
+			self.device, 
+			WGPUBufferDescriptor{
+				usage = bit.bor(
+					wgpu.WGPUBufferUsage_CopyDst,
+					wgpu.WGPUBufferUsage_Vertex
+				),
+				size = bufferSize,
+			}
+		)
+		wgpu.wgpuQueueWriteBuffer(
+			self.queue,
+			self.vertexGPU, 
+			0, 
+			vertexCPU.v,
+			bufferSize
+		)
+	end
+	do
+		self.colorCPU = vector(vec3f, self.vertexCount)
+		for i=0,self.vertexCount-1 do
+			colorCPU.v[i] = vec3f(math.random(), math.random(), math.random())
+		end
+		local bufferSize = colorCPU:getNumBytes()
+		self.colorGPU = wgpu.wgpuDeviceCreateBuffer(
+			self.device,
+			WGPUBufferDescriptor{
+				usage = bit.bor(
+					wgpu.WGPUBufferUsage_CopyDst,
+					wgpu.WGPUBufferUsage_Vertex
+				),
+				size = bufferSize,
+			}
+		)
+		wgpu.wgpuQueueWriteBuffer(
+			self.queue,
+			self.colorGPU, 
+			0, 
+			colorCPU.v,
+			bufferSize
+		)
+	end
+end
+
+function WebGPUApp:recreateSwapChain()
+	wgpu.wgpuSurfaceConfigure(surface, WGPUSurfaceConfiguration{
+		device = self.device,
+		format = self.surfaceFormat,
+		usage = wgpu.WGPUTextureUsage_RenderAttachment,
+		width = self.width,
+		height = self.height,
+		alphaMode = wgpu.WGPUCompositeAlphaMode_Auto,
+		presentMode = wgpu.WGPUPresentMode_Fifo,
+	})
 end
 
 function WebGPUApp:update()
 	-- handle update
+
+	-- get next surface target view
+
+	local surfaceTexture = WGPUSurfaceTexture()
+	wgpu.wgpuSurfaceGetCurrentTexture(self.surface, surfaceTexture)
+	if surfaceTexture.status ~= wgpu.WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal 
+	and surfaceTexture.status ~= wgpu.WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal
+	then
+print("wgpuSurfaceGetCurrentTexture failed with status " .. tostirng(surfaceTexture.status))
+		return
+	end
+
+	local targetView = wgpu.wgpuTextureCreateView(
+		surfaceTexture.texture,
+		WGPUTextureViewDescriptor{
+			label = WGPUStringView"surface textureView",
+			format = wgpu.wgpuTextureGetFormat(surfaceTexture.texture),
+			dimension = wgpu.WGPUTextureViewDimension_2D,
+			mipLevelCount = 1,
+			arrayLayerCount = 1,
+			aspect = wpgu.WGPUTextureAspect_All,
+		}
+	)
+	if not targetView then
+print("wgpuTextureCreateView failed")
+		return
+	end
+
+	-- draw on it
+
+	local encoder = wgpu.wgpuDeviceCreateCommandEncoder(
+		self.device, 
+		WGPUCommandEncoderDescriptor{
+			label = WGPUStringView"encoder",
+		}
+	)
+
+	local renderPass = wgpu.wgpuCommandEncoderBeginRenderPass(
+		encoder, 
+		WGPURenderPassDescriptor{
+			label = WGPUStringView"renderPass",
+			colorAttachmentCount = 1,
+			colorAttachments = WGPURenderPassColorAttachment{
+				view = targetView,
+				depthSlice = wpgu.WGPU_DEPTH_SLICE_UNDEFINED,	-- nonzero... smh...
+				loadOp = wgpu.WGPULoadOp_Clear,
+				storeOp = wgpu.WGPUStoreOp_Store,
+				clearValue = {.005, .01, .02, 1},
+			},
+		}
+	)
+	wgpu.wgpuRenderPassEncoderSetPipeline(
+		renderPass,
+		sef.pipeline
+	)
+	wgpu.wgpuRenderPassEncoderSetVertexBuffer(
+		renderPass,
+		0,
+		self.vertexGPU,
+		0,
+		wgpu.wgpuBufferGetSize(self.vertexGPU)
+	)
+	wgpu.wgpuRenderPassEncoderSetVertexBuffer(
+		renderPass,
+		1,
+		self.colorGPU,
+		0,
+		wgpu.wgpuBufferGetSize(self.colorGPU)
+	)
+	wgpu.wgpuRenderPassEncoderDraw(
+		renderPass,
+		self.vertexCount,
+		1,
+		0,
+		0
+	)
+	wgpu.wgpuRenderPassEncoderEnd(renderPass)
+	wgpu.wgpuRenderPassEncoderRelease(renderPass)
+
+	local command = wgpu.wgpuCommandEncoderFinish(
+		encoder,
+		WGPUCommandBufferDescriptor{
+			label = WGPUStringView"command buffer",
+		}
+	)
+	wgpu.wgpuCommandEncoderRelease(encoder)
+
+	wgpu.wgpuQueueSubmit(self.queue, 1, command)
+	wgpu.wgpuCommandBufferRelease(command)
+
+	wgpu.wgpuTextureViewRelease(targetView)
+	wgpu.wgpuSurfacePresent(self.surface)
+
+	wgpu.wgpuDeviceTick(device)
 end
 
 function WebGPUApp:resize()
 	WebGPUApp.super.resize(self)
 	-- handle resize
-	
+	self:recreateSwapChain()
 end
 
 function WebGPUApp:exit()
 	-- shutdown here
+	wgpu.wgpuBufferRelease(self.colorGPU)
+	wgpu.wgpuBufferRelease(self.vertexGPU)
+	wgpu.wgpuRenderPipelineRelease(self.pipeline)
+	wgpu.wgpuSurfaceUnconfigure(self.surface)	-- does it matter?
+	wgpu.wgpuQueueRelease(self.queue)
+	wgpu.wgpuSurfaceRelease(self.surface)
+	wgpu.wgpuDeviceRelease(self.device)
+	wgpu.wgpuAdapterRelease(self.adapter)
+	wgpu.wgpuInstanceRelease(self.instance)
+
 	WebGPUApp.super.exit(self)
 end
 
