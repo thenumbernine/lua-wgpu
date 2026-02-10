@@ -49,6 +49,7 @@ local WGPUCommandEncoderDescriptor = ffi.typeof'WGPUCommandEncoderDescriptor'
 local WGPURenderPassDescriptor = ffi.typeof'WGPURenderPassDescriptor'
 local WGPURenderPassColorAttachment = ffi.typeof'WGPURenderPassColorAttachment'
 local WGPUCommandBufferDescriptor = ffi.typeof'WGPUCommandBufferDescriptor'
+local WGPUCommandBuffer_1 = ffi.typeof'WGPUCommandBuffer[1]'
 
 local function makeWGPUVertexBufferLayout(t)
 	return WGPUVertexBufferLayout_array(#t, t)
@@ -70,6 +71,8 @@ ffi.metatype(WGPUStringView, {
 		return o
 	end,
 	__tostring = function(s)
+		if s.length == 0 then return '' end
+		if s.data == nil then return '(null)' end
 		return ffi.string(s.data, s.length)
 	end,
 	__concat = string.concat,
@@ -334,7 +337,7 @@ print('adapter', self.adapter)
 				label = WGPUStringView"My Device",
 --[[
 				.requiredLimits = (WGPULimits[]){{
-					//.maxBufferSize = colorCPU.size(),
+					//.maxBufferSize = self.vertexCount,
 					.maxVertexBuffers = 2,
 					.maxVertexAttributes = 2,
 					.maxVertexBufferArrayStride = sizeof(Tensor::float3),
@@ -388,6 +391,8 @@ print("device", self.device)
 		wgpu.wgpuSurfaceGetCapabilities(self.surface, self.adapter, capabilities)
 		self.surfaceFormat = capabilities.formats[0]
 	end
+print('surfaceFormat', self.surfaceFormat)	
+
 	self:recreateSwapChain()
 
 	-- create shaders
@@ -440,7 +445,7 @@ fn fs_main(
 	self.pipeline = wgpu.wgpuDeviceCreateRenderPipeline(self.device, WGPURenderPipelineDescriptor{
 		vertex = {
 			module = shaderModule,
-			entryPoint = WGPUStringview(vsFunc),
+			entryPoint = WGPUStringView(vsFunc),
 			bufferCount = 2,
 			buffers = makeWGPUVertexBufferLayout{
 				{	-- vertex
@@ -495,8 +500,9 @@ fn fs_main(
 			},
 		},
 	})
+print('pipeline', self.pipeline)
 
-	self.vertexCPU = vector(vec2f, {
+	local vertexCPU = vector(vec2f, {
 		{-.5, -.5},
 		{.5, -.5},
 		{0., .5},
@@ -505,6 +511,7 @@ fn fs_main(
 		{-.55, .5},
 	})
 	self.vertexCount = #vertexCPU
+print('vertexCount', self.vertexCount)
 
 	-- buffers
 	do
@@ -527,8 +534,10 @@ fn fs_main(
 			bufferSize
 		)
 	end
+print('vertexGPU', self.vertexGPU)
+	
 	do
-		self.colorCPU = vector(vec3f, self.vertexCount)
+		local colorCPU = vector(vec3f, self.vertexCount)
 		for i=0,self.vertexCount-1 do
 			colorCPU.v[i] = vec3f(math.random(), math.random(), math.random())
 		end
@@ -551,23 +560,30 @@ fn fs_main(
 			bufferSize
 		)
 	end
+print('colorGPU', self.colorGPU)
+
+	print'initWebGPU done'
 end
 
 function WebGPUApp:recreateSwapChain()
-	wgpu.wgpuSurfaceConfigure(surface, WGPUSurfaceConfiguration{
-		device = self.device,
-		format = self.surfaceFormat,
-		usage = wgpu.WGPUTextureUsage_RenderAttachment,
-		width = self.width,
-		height = self.height,
-		alphaMode = wgpu.WGPUCompositeAlphaMode_Auto,
-		presentMode = wgpu.WGPUPresentMode_Fifo,
-	})
+	wgpu.wgpuSurfaceConfigure(
+		self.surface,
+		WGPUSurfaceConfiguration{
+			device = self.device,
+			format = self.surfaceFormat,
+			usage = wgpu.WGPUTextureUsage_RenderAttachment,
+			width = self.width,
+			height = self.height,
+			alphaMode = wgpu.WGPUCompositeAlphaMode_Auto,
+			presentMode = wgpu.WGPUPresentMode_Fifo,
+		}
+	)
+print('wgpuSurfaceConfigure', self.surface)
 end
 
 function WebGPUApp:update()
 	-- handle update
-
+--print'update begin'
 	-- get next surface target view
 
 	local surfaceTexture = WGPUSurfaceTexture()
@@ -587,7 +603,7 @@ print("wgpuSurfaceGetCurrentTexture failed with status " .. tostirng(surfaceText
 			dimension = wgpu.WGPUTextureViewDimension_2D,
 			mipLevelCount = 1,
 			arrayLayerCount = 1,
-			aspect = wpgu.WGPUTextureAspect_All,
+			aspect = wgpu.WGPUTextureAspect_All,
 		}
 	)
 	if not targetView then
@@ -611,7 +627,7 @@ print("wgpuTextureCreateView failed")
 			colorAttachmentCount = 1,
 			colorAttachments = WGPURenderPassColorAttachment{
 				view = targetView,
-				depthSlice = wpgu.WGPU_DEPTH_SLICE_UNDEFINED,	-- nonzero... smh...
+				depthSlice = wgpu.WGPU_DEPTH_SLICE_UNDEFINED,	-- nonzero... smh...
 				loadOp = wgpu.WGPULoadOp_Clear,
 				storeOp = wgpu.WGPUStoreOp_Store,
 				clearValue = {.005, .01, .02, 1},
@@ -620,7 +636,7 @@ print("wgpuTextureCreateView failed")
 	)
 	wgpu.wgpuRenderPassEncoderSetPipeline(
 		renderPass,
-		sef.pipeline
+		self.pipeline
 	)
 	wgpu.wgpuRenderPassEncoderSetVertexBuffer(
 		renderPass,
@@ -646,30 +662,33 @@ print("wgpuTextureCreateView failed")
 	wgpu.wgpuRenderPassEncoderEnd(renderPass)
 	wgpu.wgpuRenderPassEncoderRelease(renderPass)
 
-	local command = wgpu.wgpuCommandEncoderFinish(
+	local command = WGPUCommandBuffer_1()
+	command[0] = wgpu.wgpuCommandEncoderFinish(
 		encoder,
 		WGPUCommandBufferDescriptor{
 			label = WGPUStringView"command buffer",
 		}
 	)
 	wgpu.wgpuCommandEncoderRelease(encoder)
-
 	wgpu.wgpuQueueSubmit(self.queue, 1, command)
-	wgpu.wgpuCommandBufferRelease(command)
+	wgpu.wgpuCommandBufferRelease(command[0])
 
 	wgpu.wgpuTextureViewRelease(targetView)
 	wgpu.wgpuSurfacePresent(self.surface)
 
-	wgpu.wgpuDeviceTick(device)
+	wgpu.wgpuDeviceTick(self.device)
+--print'update end'
 end
 
 function WebGPUApp:resize()
+print'resizing'
 	WebGPUApp.super.resize(self)
 	-- handle resize
 	self:recreateSwapChain()
 end
 
 function WebGPUApp:exit()
+print'exit begin'
 	-- shutdown here
 	wgpu.wgpuBufferRelease(self.colorGPU)
 	wgpu.wgpuBufferRelease(self.vertexGPU)
@@ -681,6 +700,7 @@ function WebGPUApp:exit()
 	wgpu.wgpuAdapterRelease(self.adapter)
 	wgpu.wgpuInstanceRelease(self.instance)
 
+print'exit end'
 	WebGPUApp.super.exit(self)
 end
 

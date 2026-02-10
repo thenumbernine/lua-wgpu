@@ -2731,7 +2731,7 @@ enum { WGPU_NULLABLE = 1 };
 /* #define WGPU_ARRAY_LAYER_COUNT_UNDEFINED (UINT32_MAX) ### define is not number */
 /* #define WGPU_COPY_STRIDE_UNDEFINED (UINT32_MAX) ### define is not number */
 /* #define WGPU_DEPTH_CLEAR_VALUE_UNDEFINED (NAN) ### define is not number */
-/* #define WGPU_DEPTH_SLICE_UNDEFINED (UINT32_MAX) ### define is not number */
+enum { WGPU_DEPTH_SLICE_UNDEFINED = 0xFFFFFFFF };
 /* #define WGPU_INVALID_BINDING (UINT32_MAX) ### define is not number */
 /* #define WGPU_LIMIT_U32_UNDEFINED (UINT32_MAX) ### define is not number */
 /* #define WGPU_LIMIT_U64_UNDEFINED (UINT64_MAX) ### define is not number */
