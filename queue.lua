@@ -46,6 +46,14 @@ function WGPUQueue:init(args)
 	end
 end
 
+function WGPUQueue:writeBuffer(...)
+	wgpu.wgpuQueueWriteBuffer(
+		self.id,
+		...
+	)
+	return self
+end
+
 function WGPUQueue:submit(cmdbuf)
 	wgpu.wgpuQueueSubmit(self.id, 1, cmdbuf.idptr)
 end

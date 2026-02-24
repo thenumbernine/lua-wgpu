@@ -4,6 +4,7 @@ local class = require 'ext.class'
 local assert = require 'ext.assert'
 local wgpu = require 'wgpu'
 local WGPUStringView = require 'wgpu.stringview'
+local WGPUBuffer = require 'wgpu.buffer'
 
 local WGPURenderPassDescriptor = ffi.typeof'WGPURenderPassDescriptor'
 
@@ -36,6 +37,19 @@ function WGPURenderPass:setVertexBuffer(...)
 	wgpu.wgpuRenderPassEncoderSetVertexBuffer(
 		self.id, ...
 	)
+	return self
+end
+
+function WGPURenderPass:setVertexBuffers(...)
+	for i=1,select('#', ...) do
+		local arg = select(i, ...)
+		assert.type(arg, 'table')
+		if WGPUBuffer:isa(arg) then
+			self:setVertexBuffer(i-1, arg.id, 0, #arg)
+		else
+			self:setVertexBuffer(i-1, table.unpack(arg))
+		end
+	end
 	return self
 end
 

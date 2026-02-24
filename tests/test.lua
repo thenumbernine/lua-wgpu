@@ -35,26 +35,16 @@ end
 
 -- override for post-webgpu-init stuff
 function WebGPUApp:initWebGPU()
-	-- weebgpu init here
-
-	-- create instance
-
 	self.instance = WGPUInstance()
 print('instance', self.instance)
-
-	-- create surface
 
 	self.surface = self.instance:makeSurface{
 		sdlWindow = self.window,
 	}
 print('surface', self.surface)
 
-	-- create adapter
-
 	self.adapter = self.surface:findAdapter()
 print('adapter', self.adapter)
-
-	-- create device
 
 	self.device = self.adapter:findDevice{
 		label = 'my device',
@@ -78,7 +68,7 @@ print('adapter', self.adapter)
 				userdata1,	-- void*
 				userdata2	-- void*
 			)
-				print('Device lost'..(reason and ' reason:'..reason or ''))
+				print('device lost'..(reason and ' reason:'..reason or ''))
 			end,
 		},
 		uncapturedErrorCallbackInfo = {
@@ -89,15 +79,13 @@ print('adapter', self.adapter)
 				userdata1,	-- void*
 				userdata2	-- void*
 			)
-				print('Uncaptured device error, type='..tostring(errorType)
+				print('uncaptured device error, type='..tostring(errorType)
 					..(message and ' message:'..message or '')
 				)
 			end,
 		},
 	}
 print("device", self.device)
-
-	-- create queue
 
 	self.queue = self.device:getQueue{
 		workDoneCallback = function(
@@ -106,7 +94,7 @@ print("device", self.device)
 			userdata1,	-- void*
 			userdata2	-- void*
 		)
-			print("Queued work finished with status: " .. tostring(status)
+			print("queued work finished with status: " .. tostring(status)
 				..(message and ' message:'..message or '')
 			)
 		end,
@@ -116,8 +104,6 @@ print("device", self.device)
 print('surfaceFormat', self.surfaceFormat)
 
 	self:recreateSwapChain()
-
-	-- create shaders
 
 	local shaderModule = WGPUShaderWGSL{
 		device = self.device.id,
@@ -225,46 +211,40 @@ print('pipeline', self.pipeline)
 print('vertexCount', self.vertexCount)
 
 	-- buffers
-	do
-		self.vertexGPU = WGPUBuffer{
-			device = self.device.id,
-			usage = bit.bor(
-				wgpu.WGPUBufferUsage_CopyDst,
-				wgpu.WGPUBufferUsage_Vertex
-			),
-			size = vertexCPU:getNumBytes(),
-		}
-		wgpu.wgpuQueueWriteBuffer(
-			self.queue.id,
-			self.vertexGPU.id,
-			0,
-			vertexCPU.v,
-			#self.vertexGPU
-		)
-	end
+	self.vertexGPU = WGPUBuffer{
+		device = self.device.id,
+		usage = bit.bor(
+			wgpu.WGPUBufferUsage_CopyDst,
+			wgpu.WGPUBufferUsage_Vertex
+		),
+		size = vertexCPU:getNumBytes(),
+	}
+	self.queue:writeBuffer(
+		self.vertexGPU.id,
+		0,
+		vertexCPU.v,
+		#self.vertexGPU
+	)
 print('vertexGPU', self.vertexGPU)
 
-	do
-		local colorCPU = vector(vec3f, self.vertexCount)
-		for i=0,self.vertexCount-1 do
-			colorCPU.v[i] = vec3f(math.random(), math.random(), math.random())
-		end
-		self.colorGPU = WGPUBuffer{
-			device = self.device.id,
-			usage = bit.bor(
-				wgpu.WGPUBufferUsage_CopyDst,
-				wgpu.WGPUBufferUsage_Vertex
-			),
-			size = colorCPU:getNumBytes()
-		}
-		wgpu.wgpuQueueWriteBuffer(
-			self.queue.id,
-			self.colorGPU.id,
-			0,
-			colorCPU.v,
-			#self.colorGPU
-		)
+	local colorCPU = vector(vec3f, self.vertexCount)
+	for i=0,self.vertexCount-1 do
+		colorCPU.v[i] = vec3f(math.random(), math.random(), math.random())
 	end
+	self.colorGPU = WGPUBuffer{
+		device = self.device.id,
+		usage = bit.bor(
+			wgpu.WGPUBufferUsage_CopyDst,
+			wgpu.WGPUBufferUsage_Vertex
+		),
+		size = colorCPU:getNumBytes()
+	}
+	self.queue:writeBuffer(
+		self.colorGPU.id,
+		0,
+		colorCPU.v,
+		#self.colorGPU
+	)
 print('colorGPU', self.colorGPU)
 
 	print'initWebGPU done'
@@ -326,24 +306,8 @@ print("wgpuTextureCreateView failed")
 		},
 	}
 		:setPipeline(self.pipeline)
-		:setVertexBuffer(
-			0,
-			self.vertexGPU.id,
-			0,
-			#self.vertexGPU
-		)
-		:setVertexBuffer(
-			1,
-			self.colorGPU.id,
-			0,
-			#self.colorGPU
-		)
-		:draw(
-			self.vertexCount,
-			1,
-			0,
-			0
-		)
+		:setVertexBuffers(self.vertexGPU, self.colorGPU)
+		:draw(self.vertexCount, 1, 0, 0)
 		:done()
 		:destroy()
 
