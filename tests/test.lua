@@ -116,11 +116,11 @@ struct VertexOutput {
 @vertex
 fn vs_main(
 	@builtin(vertex_index) vertexIndex: u32,
-	@location(0) vertex : vec2f,
+	@location(0) vertex : vec3f,
 	@location(1) color : vec3f
 ) -> VertexOutput {
 	var out : VertexOutput;
-	out.pos = vec4f(vertex, 0., 1.);
+	out.pos = vec4f(vertex * 2. - 1., 1.);
 	out.color = color;
 	return out;
 }
@@ -147,10 +147,10 @@ fn fs_main(
 			buffers = makeWGPUVertexBufferLayout{
 				{	-- vertex
 					stepMode = wgpu.WGPUVertexStepMode_Vertex,
-					arrayStride = ffi.sizeof(vec2f),
+					arrayStride = ffi.sizeof(vec3f),
 					attributeCount = 1,
 					attributes = WGPUVertexAttribute{
-						format = wgpu.WGPUVertexFormat_Float32x2,
+						format = wgpu.WGPUVertexFormat_Float32x3,
 						shaderLocation = 0,
 					},
 				},
@@ -199,16 +199,13 @@ fn fs_main(
 	}
 print('pipeline', self.pipeline)
 
-	local vertexCPU = vector(vec2f, {
-		{-.5, -.5},
-		{.5, -.5},
-		{0., .5},
-		{-.55, -.5},
-		{-.05, .5},
-		{-.55, .5},
-	})
-	self.vertexCount = #vertexCPU
+	self.vertexCount = 3 * 1000
 print('vertexCount', self.vertexCount)
+
+	self.vertexCPU = vector(vec3f, self.vertexCount)
+	for i=0,self.vertexCount-1 do
+		self.vertexCPU.v[i] = vec3f(math.random(), math.random(), math.random()) * 2 - 1
+	end
 
 	-- buffers
 	self.vertexGPU = WGPUBuffer{
@@ -217,19 +214,19 @@ print('vertexCount', self.vertexCount)
 			wgpu.WGPUBufferUsage_CopyDst,
 			wgpu.WGPUBufferUsage_Vertex
 		),
-		size = vertexCPU:getNumBytes(),
+		size = self.vertexCPU:getNumBytes(),
 	}
 	self.queue:writeBuffer(
 		self.vertexGPU.id,
 		0,
-		vertexCPU.v,
+		self.vertexCPU.v,
 		#self.vertexGPU
 	)
 print('vertexGPU', self.vertexGPU)
 
-	local colorCPU = vector(vec3f, self.vertexCount)
+	self.colorCPU = vector(vec3f, self.vertexCount)
 	for i=0,self.vertexCount-1 do
-		colorCPU.v[i] = vec3f(math.random(), math.random(), math.random())
+		self.colorCPU.v[i] = vec3f(math.random(), math.random(), math.random())
 	end
 	self.colorGPU = WGPUBuffer{
 		device = self.device.id,
@@ -237,12 +234,12 @@ print('vertexGPU', self.vertexGPU)
 			wgpu.WGPUBufferUsage_CopyDst,
 			wgpu.WGPUBufferUsage_Vertex
 		),
-		size = colorCPU:getNumBytes()
+		size = self.colorCPU:getNumBytes()
 	}
 	self.queue:writeBuffer(
 		self.colorGPU.id,
 		0,
-		colorCPU.v,
+		self.colorCPU.v,
 		#self.colorGPU
 	)
 print('colorGPU', self.colorGPU)
@@ -267,6 +264,49 @@ function WebGPUApp:update()
 	-- handle update
 --print'update begin'
 	-- get next surface target view
+
+	do
+		local dt = .001
+		local sigma = 10
+		local rho = 28
+		local beta = 8/3
+		for i=0,self.vertexCount-1 do
+			local v = self.vertexCPU.v + i
+			v.x = (v.x - .5) * 60
+			v.y = (v.y - .5) * 60
+			v.z = v.z * 60
+			v.x = v.x + dt * sigma * (v.y - v.x)
+			v.y = v.y + dt * (v.x * (rho - v.z) - v.y)
+			v.z = v.z + dt * (v.x * v.y - beta * v.z)
+			v.x = v.x / 60 + .5
+			v.y = v.y / 60 + .5
+			v.z = v.z / 60
+			
+			local c = self.colorCPU.v + i
+			c.x = (c.x - .5) * 60
+			c.y = (c.y - .5) * 60
+			c.z = c.z * 60
+			c.x = c.x + dt * sigma * (c.y - c.x)
+			c.y = c.y + dt * (c.x * (rho - c.z) - c.y)
+			c.z = c.z + dt * (c.x * c.y - beta * c.z)
+			c.x = c.x / 60 + .5
+			c.y = c.y / 60 + .5
+			c.z = c.z / 60
+		end
+		self.queue:writeBuffer(
+			self.vertexGPU.id,
+			0,
+			self.vertexCPU.v,
+			#self.vertexGPU
+		)
+		self.queue:writeBuffer(
+			self.colorGPU.id,
+			0,
+			self.colorCPU.v,
+			#self.colorGPU
+		)
+	end
+
 
 	local surfaceTexture, msg = self.surface:getCurrentTexture()
 	if not surfaceTexture then
