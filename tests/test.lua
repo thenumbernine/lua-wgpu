@@ -1,6 +1,7 @@
 #!/usr/bin/env luajit
 local ffi = require 'ffi'
 local assert = require 'ext.assert'
+local getTime = require 'ext.timer'.getTime
 local vec2f = require 'vec-ffi.vec2f'
 local vec3f = require 'vec-ffi.vec3f'
 local vector = require 'stl.vector-lua'	-- I'd use pure-ffi stl.vector but it's giving me segfaults... something is collecting/leaking...
@@ -113,6 +114,22 @@ struct VertexOutput {
 	@location(0) color : vec3f
 };
 
+fn roty(t : f32) -> mat4x4f {
+	let c = cos(t);
+	let s = sin(t);
+	return mat4x4f(
+		c, 0., s, 0.,
+		0., 1., 0., 0.,
+		-s, 0., c, 0.,
+		0., 0., 0., 1.
+	);
+}
+
+struct Unis {
+	t: f32,
+};
+@group(0) @binding(0) var<uniform> unis: Unis;
+
 @vertex
 fn vs_main(
 	@builtin(vertex_index) vertexIndex: u32,
@@ -120,7 +137,7 @@ fn vs_main(
 	@location(1) color : vec3f
 ) -> VertexOutput {
 	var out : VertexOutput;
-	out.pos = vec4f(vertex * 2. - 1., 1.);
+	out.pos = roty(unis.t) * vec4f(vertex * 2. - 1., 1.);
 	out.color = color;
 	return out;
 }
@@ -138,8 +155,52 @@ fn fs_main(
 	local vsFunc = "vs_main"
 	local fsFunc = "fs_main"
 
+	-- so much shit ... just to bind a buffer ...
+	
+	local Uniforms = ffi.typeof[[struct {
+	float t;
+}]]
+	self.uniformsCPU = vector(Uniforms, 1)
+	self.uniformsCPU.v[0].t = getTime()
+	self.uniformsGPU = WGPUBuffer{
+		device = self.device.id,
+		usage = bit.bor(
+			wgpu.WGPUBufferUsage_CopyDst,
+			wgpu.WGPUBufferUsage_Uniform
+		),
+		size = self.uniformsCPU:getNumBytes(),
+	}
+	self.queue:writeBuffer(
+		self.uniformsGPU.id,
+		0,
+		self.uniformsCPU.v,
+		#self.uniformsGPU
+	)
+
 	self.pipeline = WGPUPipeline{
 		device = self.device.id,
+		layout = wgpu.wgpuDeviceCreatePipelineLayout(	-- WGPUPipelineLayout
+			self.device.id,
+			ffi.typeof'WGPUPipelineLayoutDescriptor[1]'{{
+				bindGroupLayoutCount = 1,
+				bindGroupLayouts = ffi.typeof'WGPUBindGroupLayout[1]'{
+					wgpu.wgpuDeviceCreateBindGroupLayout(
+						self.device.id,
+						ffi.typeof'WGPUBindGroupLayoutDescriptor[1]'{{
+							entryCount = 1,
+							entries = ffi.typeof'WGPUBindGroupLayoutEntry[1]'{{
+								binding = 0,
+								visibility = wgpu.WGPUShaderStage_Vertex,
+								buffer = {
+									type = wgpu.WGPUBufferBindingType_Uniform,
+									minBindingSize = self.uniformsCPU:getNumBytes(),
+								}
+							}}
+						}}
+					),
+				},
+			}}
+		),
 		vertex = {
 			module = shaderModule.id,
 			entryPoint = WGPUStringView(vsFunc),
@@ -244,6 +305,18 @@ print('vertexGPU', self.vertexGPU)
 	)
 print('colorGPU', self.colorGPU)
 
+	self.bindGroup = wgpu.wgpuDeviceCreateBindGroup(
+		self.device.id,
+		ffi.typeof'WGPUBindGroupDescriptor'{
+			entryCount = 1,
+			entries = ffi.typeof'WGPUBindGroupEntry[1]'{{
+				binding = 0,
+				buffer = self.uniformsGPU.id,
+				size = #self.uniformsGPU,
+			}},
+		}
+	)
+
 	print'initWebGPU done'
 end
 
@@ -265,12 +338,15 @@ function WebGPUApp:update()
 --print'update begin'
 	-- get next surface target view
 
+	-- idk what to do.
+	-- here's a Lorentz attractor run on the colors and vertexes of the triangles.
 	do
+		local t = getTime()
 		local dt = .001
 		local sigma = 10
 		local rho = 28
 		local beta = 8/3
-		for i=0,self.vertexCount-1 do
+		for i=0,self.vertexCount-1,3 do
 			local v = self.vertexCPU.v + i
 			v.x = (v.x - .5) * 60
 			v.y = (v.y - .5) * 60
@@ -281,7 +357,15 @@ function WebGPUApp:update()
 			v.x = v.x / 60 + .5
 			v.y = v.y / 60 + .5
 			v.z = v.z / 60
-			
+		
+			v[1].x = v.x + .1 * math.sin(t * 3.1)
+			v[1].y = v.y + .1 * math.sin(t * 3.2)
+			v[1].z = v.z + .1 * math.sin(t * 3.3)
+			v[2].x = v.x + .1 * math.sin(t * 3.4)
+			v[2].y = v.y + .1 * math.sin(t * 3.5)
+			v[2].z = v.z + .1 * math.sin(t * 3.6)
+		for i=0,self.vertexCount-1 do
+		end	
 			local c = self.colorCPU.v + i
 			c.x = (c.x - .5) * 60
 			c.y = (c.y - .5) * 60
@@ -293,6 +377,7 @@ function WebGPUApp:update()
 			c.y = c.y / 60 + .5
 			c.z = c.z / 60
 		end
+		self.uniformsCPU.v[0].t = getTime()
 		self.queue:writeBuffer(
 			self.vertexGPU.id,
 			0,
@@ -304,6 +389,12 @@ function WebGPUApp:update()
 			0,
 			self.colorCPU.v,
 			#self.colorGPU
+		)
+		self.queue:writeBuffer(
+			self.uniformsGPU.id,
+			0,
+			self.uniformsCPU.v,
+			#self.uniformsGPU
 		)
 	end
 
@@ -347,6 +438,12 @@ print("wgpuTextureCreateView failed")
 	}
 		:setPipeline(self.pipeline)
 		:setVertexBuffers(self.vertexGPU, self.colorGPU)
+		:setBindGroup(
+			0, -- groupIndex
+			self.bindGroup,	-- group
+			0,	-- dynamicOffsetCount
+			nil		-- dynamicOffsets
+		)
 		:draw(self.vertexCount, 1, 0, 0)
 		:done()
 		:destroy()

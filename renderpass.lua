@@ -40,6 +40,13 @@ function WGPURenderPass:setVertexBuffer(...)
 	return self
 end
 
+function WGPURenderPass:setBindGroup(...)
+	wgpu.wgpuRenderPassEncoderSetBindGroup(
+		self.id, ...
+	)
+	return self
+end
+
 function WGPURenderPass:setVertexBuffers(...)
 	for i=1,select('#', ...) do
 		local arg = select(i, ...)
