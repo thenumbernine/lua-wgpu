@@ -18,14 +18,6 @@ function WGPUBindGroup:init(args)
 	)
 end
 
-function WGPUBindGroup:getSize()
-	return wgpu.wgpuBindGroupGetSize(self.id)
-end
-
-function WGPUBindGroup:__len()
-	return self:getSize()
-end
-
 function WGPUBindGroup:__tostring()
 	return self.__name..'('..tostring(self.id)..')'
 end
