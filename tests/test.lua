@@ -13,6 +13,7 @@ local WGPUInstance = require 'wgpu.instance'
 local WGPUShaderWGSL = require 'wgpu.shaderwgsl'
 local WGPUPipeline = require 'wgpu.pipeline'
 local WGPUBuffer = require 'wgpu.buffer'
+local WGPUBindGroup = require 'wgpu.bindgroup'
 
 local WGPUVertexAttribute = ffi.typeof'WGPUVertexAttribute'
 local WGPUVertexBufferLayout_array = ffi.typeof'WGPUVertexBufferLayout[?]'
@@ -177,6 +178,24 @@ fn fs_main(
 		#self.uniformsGPU
 	)
 
+	self.bindGroupLayout = wgpu.wgpuDeviceCreateBindGroupLayout(
+		self.device.id,
+		ffi.typeof'WGPUBindGroupLayoutDescriptor'{
+			entryCount = 1,
+			entries = ffi.typeof'WGPUBindGroupLayoutEntry[1]'{{
+				binding = 0,
+				visibility = bit.bor(
+					wgpu.WGPUShaderStage_Vertex,
+					wgpu.WGPUShaderStage_Fragment
+				),
+				buffer = {
+					type = wgpu.WGPUBufferBindingType_Uniform,
+					minBindingSize = self.uniformsCPU:getNumBytes(),
+				}
+			}}
+		}
+	)
+
 	self.pipeline = WGPUPipeline{
 		device = self.device.id,
 		layout = wgpu.wgpuDeviceCreatePipelineLayout(	-- WGPUPipelineLayout
@@ -184,20 +203,7 @@ fn fs_main(
 			ffi.typeof'WGPUPipelineLayoutDescriptor[1]'{{
 				bindGroupLayoutCount = 1,
 				bindGroupLayouts = ffi.typeof'WGPUBindGroupLayout[1]'{
-					wgpu.wgpuDeviceCreateBindGroupLayout(
-						self.device.id,
-						ffi.typeof'WGPUBindGroupLayoutDescriptor[1]'{{
-							entryCount = 1,
-							entries = ffi.typeof'WGPUBindGroupLayoutEntry[1]'{{
-								binding = 0,
-								visibility = wgpu.WGPUShaderStage_Vertex,
-								buffer = {
-									type = wgpu.WGPUBufferBindingType_Uniform,
-									minBindingSize = self.uniformsCPU:getNumBytes(),
-								}
-							}}
-						}}
-					),
+					self.bindGroupLayout,
 				},
 			}}
 		),
@@ -305,17 +311,16 @@ print('vertexGPU', self.vertexGPU)
 	)
 print('colorGPU', self.colorGPU)
 
-	self.bindGroup = wgpu.wgpuDeviceCreateBindGroup(
-		self.device.id,
-		ffi.typeof'WGPUBindGroupDescriptor'{
-			entryCount = 1,
-			entries = ffi.typeof'WGPUBindGroupEntry[1]'{{
-				binding = 0,
-				buffer = self.uniformsGPU.id,
-				size = #self.uniformsGPU,
-			}},
-		}
-	)
+	self.bindGroup = WGPUBindGroup{
+		device = self.device.id,
+		layout = self.bindGroupLayout,
+		entryCount = 1,
+		entries = ffi.typeof'WGPUBindGroupEntry[1]'{{
+			binding = 0,
+			buffer = self.uniformsGPU.id,
+			size = #self.uniformsGPU,
+		}},
+	}
 
 	print'initWebGPU done'
 end
@@ -440,7 +445,7 @@ print("wgpuTextureCreateView failed")
 		:setVertexBuffers(self.vertexGPU, self.colorGPU)
 		:setBindGroup(
 			0, -- groupIndex
-			self.bindGroup,	-- group
+			self.bindGroup.id,	-- group
 			0,	-- dynamicOffsetCount
 			nil		-- dynamicOffsets
 		)
