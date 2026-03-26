@@ -116,6 +116,35 @@ struct VertexOutput {
 	@location(0) color : vec3f
 };
 
+const M_PI = 3.14159265358979323846f;
+
+fn perspective(
+	fovy : f32,
+	aspectRatio : f32,
+	zNear : f32,
+	zFar : f32
+) -> mat4x4f {
+	let radians = fovy * M_PI / 360.;
+	let deltaZ = zFar - zNear;
+	let sine = sin(radians);
+	let cotangent = cos(radians) / sine;
+	return mat4x4f(
+		cotangent / aspectRatio, 0, 0, 0,
+		0, cotangent, 0, 0,
+		0, 0, -(zFar + zNear) / deltaZ, -1,
+		0, 0, -2 * zNear * zFar / deltaZ, 1,
+	);
+}
+
+fn xform(x : f32, y : f32, z : f32) -> mat4x4f {
+	return mat4x4f(
+		1., 0., 0., 0.,
+		0., 1., 0., 0.,
+		0., 0., 1., 0.,
+		x, y, z, 1.
+	);
+}
+
 fn roty(t : f32) -> mat4x4f {
 	let c = cos(t);
 	let s = sin(t);
@@ -127,10 +156,11 @@ fn roty(t : f32) -> mat4x4f {
 	);
 }
 
-struct Unis {
-	t: f32,
+struct Uniforms {
+	t : f32,
+	aspectRatio : f32,
 };
-@group(0) @binding(0) var<uniform> unis: Unis;
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @vertex
 fn vs_main(
@@ -139,7 +169,11 @@ fn vs_main(
 	@location(1) color : vec3f
 ) -> VertexOutput {
 	var out : VertexOutput;
-	out.pos = roty(unis.t) * vec4f(vertex * 2. - 1., 1.);
+	out.pos = 
+		perspective(90., uniforms.aspectRatio, .01, 100.)
+		* xform(0., 0., -5.)
+		* roty(uniforms.t) 
+		* vec4f(vertex * 2. - 1., 1.);
 	out.color = color;
 	return out;
 }
@@ -161,9 +195,11 @@ fn fs_main(
 	
 	local Uniforms = ffi.typeof[[struct {
 	float t;
+	float aspectRatio;
 }]]
 	self.uniformsCPU = vector(Uniforms, 1)
 	self.uniformsCPU.v[0].t = getTime()
+	self.uniformsCPU.v[0].aspectRatio = self.width / self.height
 	self.uniformsGPU = WGPUBuffer{
 		device = self.device.id,
 		usage = bit.bor(
@@ -381,7 +417,8 @@ function WebGPUApp:update()
 			c.y = c.y / 60 + .5
 			c.z = c.z / 60
 		end
-		self.uniformsCPU.v[0].t = getTime()
+		self.uniformsCPU.v[0].t = t
+		self.uniformsCPU.v[0].aspectRatio = self.width / self.height
 		self.queue:writeBuffer(
 			self.vertexGPU.id,
 			0,
