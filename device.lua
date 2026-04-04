@@ -68,6 +68,7 @@ function WGPUDevice:init(args)
 				userdata2	-- void*
 			)
 		end
+		jit.off(self.deviceLostCallback)
 		self.deviceLostClosure = ffi.cast(WGPUDeviceLostCallback, self.deviceLostCallback)
 		args.deviceLostCallbackInfo.callback = self.deviceLostClosure
 	end
@@ -102,6 +103,7 @@ function WGPUDevice:init(args)
 				userdata2	-- void*
 			)
 		end
+		jit.off(self.uncapturedErrorCallback)
 		self.uncapturedErrorClosure = ffi.cast(WGPUUncapturedErrorCallback, self.uncapturedErrorCallback)
 		args.uncapturedErrorCallbackInfo.callback = self.uncapturedErrorClosure
 	end
@@ -171,6 +173,7 @@ function WGPUDevice:init(args)
 			print("Could not get WebGPU device: " .. message)
 		end
 	end
+	jit.off(self.requestDeviceCallback)
 	local requestDeviceClosure = ffi.cast(WGPURequestDeviceCallback, self.requestDeviceCallback)
 
 	wgpu.wgpuAdapterRequestDevice(

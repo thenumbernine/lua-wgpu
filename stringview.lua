@@ -21,18 +21,6 @@ ffi.metatype(WGPUStringView, {
 	__tostring = function(s)
 		if s.length == 0 then return '' end
 		if s.data == nil then return '(null)' end
--- getting corrupted data
--- probably because I converted the pass-as-struct-value to pointer
--- and it especially happens on shutdown...
-		if s.length > 100000 then
-			print(
-				'WGPUStringView error: length='..tostring(s.length)
-					..' data='..tostring(s.data)..
-					'\n'
-					..debug.traceback()
-			)
-			return ''
-		end
 		return ffi.string(s.data, s.length)
 	end,
 	__concat = string.concat,

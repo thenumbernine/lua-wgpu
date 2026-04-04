@@ -34,6 +34,7 @@ function WGPUQueue:init(args)
 				userdata2	-- void*
 			)
 		end
+		jit.off(self.workDoneCallback)
 		local queueWorkDoneClosure = ffi.cast(WGPUQueueWorkDoneCallback, self.workDoneCallback)
 		wgpu.wgpuQueueOnSubmittedWorkDone(
 			self.id,

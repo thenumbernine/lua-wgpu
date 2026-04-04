@@ -105,6 +105,7 @@ function WGPUAdapter:init(args)
 			print("Could not get WebGPU adapter: " .. message)
 		end
 	end
+	jit.off(callback)
 	self.retainCallback = callback
 	local closure = ffi.cast(WGPURequestAdapterCallback, callback)	-- can't convert
 
