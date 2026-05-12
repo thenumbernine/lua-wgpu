@@ -14,7 +14,7 @@ files = {
 	"run.lua",
 	"wgpu.lua",
 }
-if ffi.os == "Linux" and ffi.arch == "x64" then
+if targetOS == "Linux" and targetArch == "x64" then
 	table.append(files, {
 		"bin/Linux/x64/libwebgpu_dawn.so",
 	})
